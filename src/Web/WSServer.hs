@@ -152,14 +152,20 @@ application newClientCallback serverState  pending= do
       forkChannelToConnTask outIn connWs = async $ sendingTask outIn connWs
 
 
+{-
+sendwithDebug connWs dataToSend = do
+  debugM loggerPath ("sending data:"<> show dataToSend)
+  WS.sendTextData connWs dataToSend
+-}
+
 sendJSONData :: ToJSON b => WS.Connection -> b -> IO ()
 sendJSONData connWs b =
   WS.sendTextData connWs (BStrL.toStrict (DA.encode b))
 
-
 sendingTask :: ToJSON b => PC.Input b -> WS.Connection -> IO ()
 sendingTask outIn connWs = runEffect $
-  PC.fromInput outIn `for` (lift . sendJSONData connWs)
+  PC.fromInput outIn `for` (lift . sendJSONData connWs) --WS.sendTextData connWs)
+  --PC.fromInput outIn `for` PAU.encode `for` (lift . sendwithDebug connWs) --WS.sendTextData connWs)
 
 outputConsumer :: PC.Output a -> Pipes.Consumer' a IO r
 outputConsumer output = forever $ do
@@ -169,6 +175,7 @@ outputConsumer output = forever $ do
 bytesProducer :: WS.Connection -> Pipes.Producer ByteString IO ()
 bytesProducer conn = forever $ do
   bytes <- lift $ WS.receiveData conn--
+  -- liftIO $ debugM loggerPath ("receive bytes: "<> show bytes)
   yield bytes
 
 inProducer :: (ToJSON i, FromJSON i) => Pipes.Producer ByteString IO r -> Pipes.Producer i IO (Either (PA.DecodingError, Pipes.Producer ByteString IO r) r)
