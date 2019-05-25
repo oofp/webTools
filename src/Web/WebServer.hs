@@ -2,8 +2,10 @@ module Web.WebServer
   ( runTlsApp
   , runTlsExApp
   , runHttpApp
+  , runHttpAppWithPath
   , runHttpExApp
   , runRedirect
+  , runStaticHttpSrv
   ) where
 
 import Protolude
@@ -24,23 +26,36 @@ import Prelude (String)
 noScottyApps :: Scotty.ScottyM ()
 noScottyApps = return ()
 
-scottyHandler :: String -> Scotty.ScottyM () -> Scotty.ScottyM ()
-scottyHandler defPage extraApps = do
+scottyHandlerWithPath :: String -> String -> Scotty.ScottyM () -> Scotty.ScottyM ()
+scottyHandlerWithPath defPage rootPath extraApps = do
    Scotty.get "/" $ Scotty.file defPage
    extraApps
-   Scotty.middleware $ staticPolicy (noDots >-> addBase "static")
+   Scotty.middleware $ staticPolicy (noDots >-> addBase rootPath)
 
+scottyHandler :: String -> Scotty.ScottyM () -> Scotty.ScottyM ()
+scottyHandler defPage extraApps = scottyHandlerWithPath defPage "static" extraApps  
+
+waiScottyAppWithPath :: String -> String -> Scotty.ScottyM () ->IO WAI.Application
+waiScottyAppWithPath defPage rootPath webApps = Scotty.scottyApp (scottyHandlerWithPath defPage rootPath webApps)
+   
 waiScottyApp :: String -> Scotty.ScottyM () ->IO WAI.Application
 waiScottyApp defPage webApps = Scotty.scottyApp (scottyHandler defPage webApps)
+
+webAppWithPath :: String -> String -> Scotty.ScottyM () -> WS.ServerApp->IO WAI.Application
+webAppWithPath defPage rootPath webApps wsApp = do
+  httpHandler <- waiScottyAppWithPath defPage rootPath webApps
+  return $ websocketsOr defaultConnectionOptions wsApp httpHandler
 
 webApp :: String ->  Scotty.ScottyM () -> WS.ServerApp->IO WAI.Application
 webApp defPage webApps wsApp = do
   httpHandler <- waiScottyApp defPage webApps
   return $ websocketsOr defaultConnectionOptions wsApp httpHandler
 
+staticWebAppWithPath :: String -> String -> IO WAI.Application
+staticWebAppWithPath defPage rootPath = waiScottyAppWithPath defPage rootPath noScottyApps
+    
 runTlsApp :: String -> TLSSettings -> WS.ServerApp->Int->IO ()
 runTlsApp  defPage theTlsSettings wsApp port = do
-   --let tlsCfg=tlsSettingsChain "/etc/letsencrypt/live/sip.uno/cert.pem" ["/etc/letsencrypt/live/sip.uno/chain.pem"] "/etc/letsencrypt/live/sip.uno/privkey.pem"
    let cfg=Warp.setPort port Warp.defaultSettings
    appToRun <- webApp defPage noScottyApps wsApp
    runTLS theTlsSettings cfg appToRun
@@ -56,17 +71,27 @@ runHttpApp  defPage wsApp port = do
   appToRun <- webApp defPage noScottyApps wsApp
   Warp.run port appToRun
 
+runHttpAppWithPath :: String -> String -> WS.ServerApp->Int->IO ()
+runHttpAppWithPath defPage rootPath wsApp port = do
+  appToRun <- webAppWithPath defPage rootPath noScottyApps wsApp
+  Warp.run port appToRun
+
+runStaticHttpSrv :: String -> String -> Int -> IO ()
+runStaticHttpSrv defPage rootPath port = do
+  appToRun <- staticWebAppWithPath defPage rootPath 
+  Warp.run port appToRun
+  
 runHttpExApp :: String -> Scotty.ScottyM () -> WS.ServerApp->Int->IO ()
 runHttpExApp  defPage webApps wsApp port = do
   appToRun <- webApp defPage webApps wsApp
   Warp.run port appToRun
 
-redirApp :: URI -> WAI.Application
-redirApp url _req respond = respond =<< redirect' HTTPTypes.status302 [] url
- --where
- --   Just uri = parseURI toURL
+redirApp :: String -> WAI.Application
+redirApp toURL _req respond = respond =<< redirect' HTTPTypes.status302 [] uri
+ where
+   -- Just uri = parseURI "https://localhost:443/GroupCalls.html"
+   -- Just uri = parseURI "https://voip2.me/GroupCalls.html"
+   Just uri = parseURI toURL
 
-runRedirect :: Int -> String -> IO (Maybe ())
-runRedirect port toURL =
-  let urlMaybe = parseURI toURL
-  in forM urlMaybe (Warp.run port . redirApp)
+runRedirect :: Int -> String -> IO ()
+runRedirect port toURL = Warp.run port (redirApp toURL)

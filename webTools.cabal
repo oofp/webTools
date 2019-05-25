@@ -21,7 +21,7 @@ library
                      , Web.WSServer
   other-modules:
   build-depends:       base >= 4.7 && < 5
-                     , protolude >= 0.1.6 && < 0.2
+                     , protolude 
                      , pipes
                      , pipes-aeson
                      , aeson
@@ -31,8 +31,6 @@ library
                      , lens-aeson
                      , pipes-concurrency
                      , async
-                     , stm-containers
-                     , stm
                      , uuid
                      , websockets
                      , network
@@ -55,11 +53,21 @@ executable webTools-exe
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , webTools
-                     , protolude >= 0.1.6 && < 0.2
+                     , protolude
                      , pipes
                      , pipes-aeson
                      , pipes-concurrency
                      , aeson
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+executable StaticHTTPSrv
+  hs-source-dirs:      staticHttpSrv
+  main-is:             Main.hs
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , webTools
+                     , protolude
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings, NoImplicitPrelude
 
